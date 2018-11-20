@@ -10,7 +10,7 @@
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
-
+// 创建一个 websocket 请求
 extern CFHTTPMessageRef SRHTTPConnectMessageCreate(NSURLRequest *request,
                                                    NSString *securityKey,
                                                    uint8_t webSocketProtocolVersion,

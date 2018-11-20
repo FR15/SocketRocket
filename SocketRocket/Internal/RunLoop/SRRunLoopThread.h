@@ -11,6 +11,8 @@
 
 #import <Foundation/Foundation.h>
 
+// 常驻线程
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface SRRunLoopThread : NSThread

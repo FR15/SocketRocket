@@ -155,6 +155,7 @@
         httpURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@", _url.host]];
     }
 
+    //
     NSArray *proxies = CFBridgingRelease(CFNetworkCopyProxiesForURL((__bridge CFURLRef)httpURL, (__bridge CFDictionaryRef)proxySettings));
     if (proxies.count == 0) {
         SRDebugLog(@"configureProxy no proxies");
@@ -310,8 +311,12 @@
     CFWriteStreamRef writeStream = NULL;
 
     SRDebugLog(@"ProxyConnect connect stream to %@:%u", host, port);
+    // Creates readable and writable streams connected to a TCP/IP port of a particular host.
+    // The streams do not create a socket, resolve the hostname, or connect to the remote host until you open one of the streams.
     CFStreamCreatePairWithSocketToHost(NULL, (__bridge CFStringRef)host, port, &readStream, &writeStream);
 
+    // CFBridgingRelease
+    // Moves a non-Objective-C pointer to Objective-C and also transfers ownership to ARC.
     self.outputStream = CFBridgingRelease(writeStream);
     self.inputStream = CFBridgingRelease(readStream);
 

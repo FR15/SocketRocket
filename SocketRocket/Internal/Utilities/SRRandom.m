@@ -15,9 +15,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 NSData *SRRandomData(NSUInteger length)
 {
+    // NSData = byte buffer
     NSMutableData *data = [NSMutableData dataWithLength:length];
+    // Generates an array of cryptographically secure random bytes into data.mutableBytes
     int result = SecRandomCopyBytes(kSecRandomDefault, data.length, data.mutableBytes);
-    if (result != 0) {
+    if (result != errSecSuccess) { // error
         [NSException raise:NSInternalInconsistencyException format:@"Failed to generate random bytes with OSStatus: %d", result];
     }
     return data;

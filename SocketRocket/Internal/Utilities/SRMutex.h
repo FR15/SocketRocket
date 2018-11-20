@@ -9,6 +9,8 @@
 
 #import <Foundation/Foundation.h>
 
+// 线程锁
+
 NS_ASSUME_NONNULL_BEGIN
 
 typedef __attribute__((capability("mutex"))) pthread_mutex_t *SRMutex;

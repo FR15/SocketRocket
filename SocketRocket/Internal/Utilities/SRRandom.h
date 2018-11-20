@@ -10,7 +10,7 @@
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
-
+// 生成一串指定长度的加密的随机bytes
 extern NSData *SRRandomData(NSUInteger length);
 
 NS_ASSUME_NONNULL_END

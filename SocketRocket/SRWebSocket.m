@@ -93,11 +93,11 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
     NSInputStream *_inputStream;
     NSOutputStream *_outputStream;
 
-    dispatch_data_t _readBuffer;
-    NSUInteger _readBufferOffset;
+    dispatch_data_t _readBuffer;  // read data buffer
+    NSUInteger _readBufferOffset; //
 
-    dispatch_data_t _outputBuffer;
-    NSUInteger _outputBufferOffset;
+    dispatch_data_t _outputBuffer; // send data buffer
+    NSUInteger _outputBufferOffset; // 记录上次写入点
 
     uint8_t _currentFrameOpcode;
     size_t _currentFrameCount;
@@ -110,14 +110,14 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
     NSString *_secKey;
 
     SRSecurityPolicy *_securityPolicy;
-    BOOL _requestRequiresSSL;
+    BOOL _requestRequiresSSL; // https
     BOOL _streamSecurityValidated;
 
     uint8_t _currentReadMaskKey[4];
     size_t _currentReadMaskOffset;
 
     BOOL _closeWhenFinishedWriting;
-    BOOL _failed;
+    BOOL _failed; // 请求失败
 
     NSURLRequest *_urlRequest;
 
@@ -182,7 +182,8 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
 
     return self;
 }
-
+// 不受信任的 SSL 证书
+// 证书链验证
 - (instancetype)initWithURLRequest:(NSURLRequest *)request protocols:(NSArray<NSString *> *)protocols allowsUntrustedSSLCertificates:(BOOL)allowsUntrustedSSLCertificates
 {
     SRSecurityPolicy *securityPolicy;
@@ -274,6 +275,9 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
 #pragma mark - Accessors
 ///--------------------------------------
 
+
+
+
 #pragma mark readyState
 
 - (void)setReadyState:(SRReadyState)readyState
@@ -301,10 +305,14 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
     OSSpinLockUnlock(&_propertyLock);
     return state;
 }
-
+// 手动触发 KVO
 + (BOOL)automaticallyNotifiesObserversOfReadyState {
     return NO;
 }
+
+
+
+
 
 ///--------------------------------------
 #pragma mark - Open / Close
@@ -317,7 +325,7 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
 
     _selfRetain = self;
 
-    if (_urlRequest.timeoutInterval > 0) {
+    if (_urlRequest.timeoutInterval > 0) { // 请求超时
         dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_urlRequest.timeoutInterval * NSEC_PER_SEC));
         dispatch_after(popTime, dispatch_get_main_queue(), ^{
             if (self.readyState == SR_CONNECTING) {
@@ -368,12 +376,12 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
 
 - (BOOL)_checkHandshake:(CFHTTPMessageRef)httpMessage;
 {
+    // 服务端会返回一个 Sec-WebSocket-Accept 字段
+    // Sec-WebSocket-Accept = Sec-WebSocket-Key + 魔串  + SHA-1 + base64
     NSString *acceptHeader = CFBridgingRelease(CFHTTPMessageCopyHeaderFieldValue(httpMessage, CFSTR("Sec-WebSocket-Accept")));
 
-    if (acceptHeader == nil) {
-        return NO;
-    }
-
+    if (acceptHeader == nil) return NO;
+    
     NSString *concattedString = [_secKey stringByAppendingString:SRWebSocketAppendToSecKeyString];
     NSData *hashedString = SRSHA1HashFromString(concattedString);
     NSString *expectedAccept = SRBase64EncodedStringFromData(hashedString);
@@ -412,9 +420,8 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
 
     self.readyState = SR_OPEN;
 
-    if (!_didFail) {
-        [self _readFrameNew];
-    }
+    if (!_didFail) [self _readFrameNew];
+    
 
     [self.delegateController performDelegateBlock:^(id<SRWebSocketDelegate>  _Nullable delegate, SRDelegateAvailableMethods availableMethods) {
         if (availableMethods.didOpen) {
@@ -456,13 +463,12 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
                                                           _requestedProtocols);
 
     NSData *messageData = CFBridgingRelease(CFHTTPMessageCopySerializedMessage(message));
-
     CFRelease(message);
 
     [self _writeData:messageData];
     [self _readHTTPHeader];
 }
-
+// set stream
 - (void)_updateSecureStreamOptions
 {
     if (_requestRequiresSSL) {
@@ -576,20 +582,18 @@ NSString *const SRHTTPResponseErrorKey = @"HTTPResponseStatusCode";
         }
     });
 }
-
+// send data 放入 outputBuffer
 - (void)_writeData:(NSData *)data;
 {
     [self assertOnWorkQueue];
 
-    if (_closeWhenFinishedWriting) {
-        return;
-    }
+    if (_closeWhenFinishedWriting) return;
 
     __block NSData *strongData = data;
     dispatch_data_t newData = dispatch_data_create(data.bytes, data.length, nil, ^{
         strongData = nil;
     });
-    _outputBuffer = dispatch_data_create_concat(_outputBuffer, newData);
+    _outputBuffer = dispatch_data_create_concat(_outputBuffer, newData); // _outputBuffer + new_data
     [self _pumpWriting];
 }
 
@@ -1047,11 +1051,12 @@ static const uint8_t SRPayloadLenMask   = 0x7F;
 
     NSUInteger dataLength = dispatch_data_get_size(_outputBuffer);
     if (dataLength - _outputBufferOffset > 0 && _outputStream.hasSpaceAvailable) {
-        __block NSInteger bytesWritten = 0;
-        __block BOOL streamFailed = NO;
+        __block NSInteger bytesWritten = 0; // 记录总共写入字节数
+        __block BOOL streamFailed = NO; // 记录写入是否失败
 
         dispatch_data_t dataToSend = dispatch_data_create_subrange(_outputBuffer, _outputBufferOffset, dataLength - _outputBufferOffset);
         dispatch_data_apply(dataToSend, ^bool(dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
+            // sentLength 写入的字节数; -1 表示失败
             NSInteger sentLength = [_outputStream write:buffer maxLength:size];
             if (sentLength == -1) {
                 streamFailed = YES;
@@ -1071,12 +1076,14 @@ static const uint8_t SRPayloadLenMask   = 0x7F;
 
         _outputBufferOffset += bytesWritten;
 
+        // 重置
         if (_outputBufferOffset > SRDefaultBufferSize() && _outputBufferOffset > dataLength / 2) {
             _outputBuffer = dispatch_data_create_subrange(_outputBuffer, _outputBufferOffset, dataLength - _outputBufferOffset);
             _outputBufferOffset = 0;
         }
     }
 
+    // close
     if (_closeWhenFinishedWriting &&
         (dispatch_data_get_size(_outputBuffer) - _outputBufferOffset) == 0 &&
         (_inputStream.streamStatus != NSStreamStatusNotOpen &&
@@ -1201,21 +1208,12 @@ static const char CRLFCRLFBytes[] = {'\r', '\n', '\r', '\n'};
 - (BOOL)_innerPumpScanner {
 
     BOOL didWork = NO;
-
-    if (self.readyState >= SR_CLOSED) {
-        return didWork;
-    }
-
+    if (self.readyState >= SR_CLOSED) return didWork;
+    if (!_consumers.count) return didWork;
+    
     size_t readBufferSize = dispatch_data_get_size(_readBuffer);
-
-    if (!_consumers.count) {
-        return didWork;
-    }
-
     size_t curSize = readBufferSize - _readBufferOffset;
-    if (!curSize) {
-        return didWork;
-    }
+    if (!curSize) return didWork;
 
     SRIOConsumer *consumer = [_consumers objectAtIndex:0];
 
@@ -1331,31 +1329,41 @@ static const char CRLFCRLFBytes[] = {'\r', '\n', '\r', '\n'};
 
 static const size_t SRFrameHeaderOverhead = 32;
 
+// 封装 send frame
 - (void)_sendFrameWithOpcode:(SROpCode)opCode data:(NSData *)data
 {
     [self assertOnWorkQueue];
 
-    if (!data) {
-        return;
-    }
+    if (!data) return;
 
     size_t payloadLength = data.length;
 
+    // frame
     NSMutableData *frameData = [[NSMutableData alloc] initWithLength:payloadLength + SRFrameHeaderOverhead];
     if (!frameData) {
         [self closeWithCode:SRStatusCodeMessageTooBig reason:@"Message too big"];
         return;
     }
-    uint8_t *frameBuffer = (uint8_t *)frameData.mutableBytes;
+    uint8_t *frameBuffer = (uint8_t *)frameData.mutableBytes; // start pointer
 
     // set fin
+    // fin + opcode
+    // 1000 0001
     frameBuffer[0] = SRFinMask | opCode;
 
     // set the mask and header
+    // mask = 1
+    // 10001 0001 1000 0000
     frameBuffer[1] |= SRMaskMask;
 
-    size_t frameBufferSize = 2;
+    size_t frameBufferSize = 2; // 标记 frameBuffer[2]
 
+    // 1000 0000 第一个位1表示 MASK, 后7位可能表示 payload data length
+    // 如果 payload data 长度在 0-125 bytes 范围内，则后7位就是 payload data length
+    // 如果 payload data 长度是 126 bytes，则后7位 【后面的2bytes】就是 payload data length
+    // 如果 payload data 长度是 127 bytes，则后7位 【后面的8bytes】就是 payload data length
+    
+    // set payload data length
     if (payloadLength < 126) {
         frameBuffer[1] |= payloadLength;
     } else {
@@ -1363,35 +1371,42 @@ static const size_t SRFrameHeaderOverhead = 32;
         size_t declaredPayloadLengthSize = 0;
 
         if (payloadLength <= UINT16_MAX) {
-            frameBuffer[1] |= 126;
+            frameBuffer[1] |= 126; // 10001 0001 1111 1110
 
             declaredPayloadLength = CFSwapInt16BigToHost((uint16_t)payloadLength);
             declaredPayloadLengthSize = sizeof(uint16_t);
         } else {
-            frameBuffer[1] |= 127;
+            frameBuffer[1] |= 127; // 10001 0001 1111 1111
 
             declaredPayloadLength = CFSwapInt64BigToHost((uint64_t)payloadLength);
             declaredPayloadLengthSize = sizeof(uint64_t);
         }
 
+        // 将 payload data length 写入 frameBuffer
         memcpy((frameBuffer + frameBufferSize), &declaredPayloadLength, declaredPayloadLengthSize);
         frameBufferSize += declaredPayloadLengthSize;
     }
 
+    // payload data
     const uint8_t *unmaskedPayloadBuffer = (uint8_t *)data.bytes;
-    uint8_t *maskKey = frameBuffer + frameBufferSize;
+    uint8_t *maskKey = frameBuffer + frameBufferSize; // maskKey pointer
 
+    // masking-key
+    // 所有从客户端发送到服务器的帧都包含一个32 bits的掩码（如果“mask bit”被设置成1），否则为0 bit。
+    // 一旦掩码被设置，所有接收到的payload data都必须与该值以一种算法做异或运算来获取真实值
     size_t randomBytesSize = sizeof(uint32_t);
-    int result = SecRandomCopyBytes(kSecRandomDefault, randomBytesSize, maskKey);
+    int result = SecRandomCopyBytes(kSecRandomDefault, randomBytesSize, maskKey); // set masking key
     if (result != 0) {
         //TODO: (nlutsenko) Check if there was an error.
     }
     frameBufferSize += randomBytesSize;
 
     // Copy and unmask the buffer
-    uint8_t *frameBufferPayloadPointer = frameBuffer + frameBufferSize;
+    uint8_t *frameBufferPayloadPointer = frameBuffer + frameBufferSize; // payload data pointer
 
+    // 将 payload data 写入 frameBuffer
     memcpy(frameBufferPayloadPointer, unmaskedPayloadBuffer, payloadLength);
+    // ????
     SRMaskBytesSIMD(frameBufferPayloadPointer, payloadLength, maskKey);
     frameBufferSize += payloadLength;
 

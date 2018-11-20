@@ -13,6 +13,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// http header origin value
 NSString *SRURLOrigin(NSURL *url)
 {
     NSMutableString *origin = [NSMutableString string];
@@ -40,13 +41,13 @@ extern BOOL SRURLRequiresSSL(NSURL *url)
     NSString *scheme = url.scheme.lowercaseString;
     return ([scheme isEqualToString:@"wss"] || [scheme isEqualToString:@"https"]);
 }
-
+// basic authorization
 extern NSString *_Nullable SRBasicAuthorizationHeaderFromURL(NSURL *url)
 {
     NSData *data = [[NSString stringWithFormat:@"%@:%@", url.user, url.password] dataUsingEncoding:NSUTF8StringEncoding];
     return [NSString stringWithFormat:@"Basic %@", SRBase64EncodedStringFromData(data)];
 }
-
+// networkServiceType
 extern NSString *_Nullable SRStreamNetworkServiceTypeFromURLRequest(NSURLRequest *request)
 {
     NSString *networkServiceType = nil;
